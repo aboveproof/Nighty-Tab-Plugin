@@ -22,10 +22,12 @@ function hostOf(url: string): string {
     return "";
 }
 
-function keepEmbedCookie(cookie: string): string {
-    let next = cookie.replace(/;\s*samesite=[^;]*/gi, "").replace(/;\s*partitioned\b/gi, "");
-    if (!/;\s*secure\b/i.test(next)) next += "; Secure";
-    next += "; SameSite=None; Partitioned";
+function keepEmbedCookie(pageUrl: string, cookie: string): string {
+    // SameSite=None requires Secure, and Secure cookies are dropped on http://ip:port.
+    if (!pageUrl.startsWith("https:")) return cookie;
+
+    let next = cookie.replace(/;\s*samesite=[^;]*/gi, "").replace(/;\s*partitioned\b/gi, "").replace(/;\s*secure\b/gi, "");
+    next += "; Secure; SameSite=None";
     if (!/(?:^|;)\s*(?:expires|max-age)=/i.test(next)) next += `; Max-Age=${MONTH_SECONDS}`;
     return next;
 }
@@ -64,11 +66,14 @@ const INJECT_SCRIPT = `
                 return desc.get.call(document);
             },
             set(val) {
-                let str = String(val);
-                let next = str.replace(/;\\s*samesite=[^;]*/gi, "").replace(/;\\s*partitioned\\b/gi, "");
-                if (!/;\\s*secure\\b/i.test(next)) next += "; Secure";
-                next += "; SameSite=None; Partitioned";
-                return origSet.call(document, next);
+                const str = String(val);
+                if (location.protocol !== "https:") return origSet.call(document, str);
+                const next = str.replace(/;\\s*samesite=[^;]*/gi, "").replace(/;\\s*partitioned\\b/gi, "").replace(/;\\s*secure\\b/gi, "");
+                try {
+                    return origSet.call(document, next + "; Secure; SameSite=None");
+                } catch {
+                    return origSet.call(document, str);
+                }
             }
         });
     }
@@ -85,7 +90,8 @@ const INJECT_SCRIPT = `
                         window.parent.postMessage({
                             type: "VC_NIGHTY_TOKEN",
                             token: data.access_token,
-                            host: window.location.host
+                            host: window.location.host,
+                            protocol: window.location.protocol
                         }, "*");
                     }
                 }).catch(() => {});
@@ -130,7 +136,7 @@ function registerHooks() {
         const key = Object.keys(responseHeaders).find(name => name.toLowerCase() === "set-cookie");
         const cookies = key === undefined ? undefined : responseHeaders[key];
         if (key !== undefined && cookies) {
-            responseHeaders[key] = cookies.map(keepEmbedCookie);
+            responseHeaders[key] = cookies.map(cookie => keepEmbedCookie(url, cookie));
         }
     });
 
@@ -174,19 +180,21 @@ export function allowEmbed(_event: IpcMainInvokeEvent, url: unknown) {
     }
 }
 
-export async function saveToken(_event: IpcMainInvokeEvent, host: unknown, token: unknown) {
+export async function saveToken(_event: IpcMainInvokeEvent, host: unknown, token: unknown, protocol: unknown) {
     if (typeof host !== "string" || typeof token !== "string" || host === "" || token === "") return;
     cachedTokens.set(host, token);
     embedHosts.add(host);
 
+    const secure = protocol === "https:";
     try {
         await session.defaultSession.cookies.set({
-            url: `https://${host}`,
+            url: `${secure ? "https" : "http"}://${host}`,
             name: "access_token",
             value: token,
-            sameSite: "no_restriction",
-            secure: true,
-            partitioned: true
+            path: "/",
+            sameSite: secure ? "no_restriction" : "lax",
+            secure,
+            expirationDate: Math.floor(Date.now() / 1000) + MONTH_SECONDS
         });
     } catch (e) {
         console.error("[Nighty Tab] Failed to persist cookie in session", e);

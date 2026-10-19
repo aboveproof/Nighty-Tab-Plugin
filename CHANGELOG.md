@@ -2,6 +2,10 @@
 
 All changes made to Nighty Tab Plugin and related Equicord integration files.
 
+## Login refresh
+
+- **Cookie scheme**: Login pages set an `access_token` cookie and then reload. The embed was rewriting every cookie to `Secure; SameSite=None; Partitioned`. That attribute set is rejected on `http://ip:port`, and a partitioned cookie is not the one the iframe sends on reload, so the reload returned to the login screen. `https` embeds now get `Secure; SameSite=None` only. `http` embeds keep the cookie the page set.
+
 ## Render error fixes
 
 - **Home row**: The private-channel list hook now runs on every render. Changing tab placement no longer trips React's hook check, so the row under Quests stays mounted instead of showing a render error.

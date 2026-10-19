@@ -258,7 +258,7 @@ const NightyPage = ErrorBoundary.wrap(function NightyPage() {
     useEffect(() => {
         const handleMessage = (e: MessageEvent) => {
             if (e.data?.type === "VC_NIGHTY_TOKEN" && typeof e.data.token === "string" && typeof e.data.host === "string") {
-                if (Native) void Native.saveToken(e.data.host, e.data.token);
+                if (Native) void Native.saveToken(e.data.host, e.data.token, e.data.protocol);
             }
         };
         window.addEventListener("message", handleMessage);
