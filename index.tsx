@@ -258,7 +258,7 @@ const NightyPage = ErrorBoundary.wrap(function NightyPage() {
     useEffect(() => {
         const handleMessage = (e: MessageEvent) => {
             if (e.data?.type === "VC_NIGHTY_TOKEN" && typeof e.data.token === "string" && typeof e.data.host === "string") {
-                if (Native) void Native.saveToken(e.data.host, e.data.token);
+                if (Native) void Native.saveToken(e.data.host, e.data.token, e.data.protocol);
             }
         };
         window.addEventListener("message", handleMessage);
@@ -372,13 +372,13 @@ const NightyGuildButton = ErrorBoundary.wrap(function NightyGuildButton() {
 
 const NightyTab = ErrorBoundary.wrap(function NightyTab() {
     const { tabPlacement } = settings.use(["tabPlacement"]);
-    if (tabPlacement === "guilds") return null;
-
     const listItem = usePrivateChannelListItem(NIGHTY_ITEM_ID);
     const isSelected = useStateFromStores(
         [SelectedChannelStore],
         () => window.location.pathname.startsWith(NIGHTY_ROUTE)
     );
+
+    if (tabPlacement === "guilds") return null;
 
     return (
         <PrivateChannelLink
@@ -444,11 +444,12 @@ export default definePlugin({
 
     patches: [
         {
-            // Exports the guildless server list item component used by the guild bar button.
-            find: '="DOWNLOAD_APPS";function',
+            // Discord keeps the guild-bar button local to the server list module.
+            // Export it so the server-list Nighty button can render that same control.
+            find: '="DOWNLOAD_APPS"',
             replacement: {
-                match: /(?<!GuildlessServerListItemComponent:\(\)=>\i,)(?=\i:\(\)=>\i.{0,30000}?asContainer:!\i.{0,50};let (\i)=\i.forwardRef\(function)/,
-                replace: "GuildlessServerListItemComponent:()=>$1,"
+                match: /n\.d\(t,\{A:\(\)=>(\i)\}\)(?=[\s\S]{0,40000}?let (\i)=function\(\i\)\{let\{ref:\i,\.\.\.\i\}=\i,\{id:\i,onClick:\i,onContextMenu:\i,icon:\i,selected:\i,tooltip:)/,
+                replace: "n.d(t,{A:()=>$1,GuildlessServerListItemComponent:()=>$2})"
             }
         },
         {
